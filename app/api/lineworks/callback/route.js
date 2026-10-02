@@ -1,5 +1,6 @@
 import { askOpenAI } from "../../../../lib/openai.js";
 import { sendLineWorksReply, verifyLineWorksSignature } from "../../../../lib/lineworks.js";
+import { forwardToPC } from "../../../../lib/relay.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -40,6 +41,18 @@ export async function POST(request) {
       return new Response(null, { status: 200 });
     }
 
+    // Opt in explicitly to the paid API. The default has no inference billing.
+    const provider = process.env.AI_PROVIDER || "disabled";
+    if (provider === "chatgpt-pc") {
+      try {
+        await forwardToPC(rawBody, signature, receivedBotId);
+      } catch {
+        console.error("PC relay unavailable (details redacted)");
+        await sendLineWorksReply(event.source, "AI用PCまたは接続トンネルが停止しています。PCの起動状態を確認し、もう一度送信してください。");
+      }
+      return new Response(null, { status: 200 });
+    }
+
     if (event.content?.type !== "text") {
       await sendLineWorksReply(event.source, "現在はテキストメッセージに対応しています。画像・ファイル対応は次の拡張で追加できます。");
       return new Response(null, { status: 200 });
@@ -58,11 +71,15 @@ export async function POST(request) {
       return new Response(null, { status: 200 });
     }
 
+    if (provider !== "openai-api") {
+      await sendLineWorksReply(event.source, "ChatGPTのPC接続を準備中です。管理者がPC認証と中継設定を完了するまでお待ちください。");
+      return new Response(null, { status: 200 });
+    }
     const answer = await askOpenAI(text);
     await sendLineWorksReply(event.source, answer);
     return new Response(null, { status: 200 });
   } catch (error) {
-    console.error("LINE WORKS callback failed", error);
+    console.error("LINE WORKS callback failed (details redacted)");
     // Callback failures are not retried by LINE WORKS, so return 200 after logging
     // to avoid repeated user-facing failures caused by upstream transient issues.
     return new Response(null, { status: 200 });

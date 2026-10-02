@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "pc": "node local/server.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
+    "jose": "^6.2.12",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

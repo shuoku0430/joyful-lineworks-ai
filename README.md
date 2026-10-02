@@ -1,118 +1,43 @@
-# ジョイフルAI — LINE WORKS × OpenAI
+# ジョイフルAI — LINE WORKS × ChatGPT
 
-LINE WORKS のトークに投稿されたテキストを OpenAI Responses API に渡し、Bot が同じ1:1トークまたは複数人トークへ返信する最小構成です。
+LINE WORKSのCallback受信に加え、公式Sign in with ChatGPTでPC上からChatGPT利用枠を使用する検証版を追加しました。
 
-## 実装済み
+**PC起動・認証・Vercel中継設定は [docs/PC_SETUP.md](docs/PC_SETUP.md) を参照してください。** 秘密情報はPCの設定画面または各サービスの環境変数画面に入力します。
 
-- LINE WORKS Callback受信
-- `X-WORKS-Signature` の HMAC-SHA256 / Base64 検証
-- `X-WORKS-BotId` の照合
-- Service Account + RS256 JWT による Access Token 発行
-- Access Token のメモリキャッシュ
-- 1:1 / 複数人トークの自動判定
-- OpenAI Responses API による回答生成
-- `/help` / `/ping`
-- 非テキストメッセージへの案内
-- Health check `/api/health`
+## 動作方式
 
-## 1. LINE WORKS Developer Console
+| AI_PROVIDER | 動作 |
+|---|---|
+| 未指定 / disabled | AI接続準備中と返信。有料APIを呼ばない |
+| chatgpt-pc | Vercelから署名付きCallbackをHTTPSでPCへ中継。PCのOAuth認証でChatGPT利用枠を使う |
+| openai-api | 明示的に選択した場合だけ、従来のOPENAI_API_KEY方式を使う。API料金が別途必要 |
 
-### A. API Client App（認証アプリ）
-
-1. Developer Console > API > ClientApp で認証アプリを作成
-2. Scope に `bot` を追加
-3. Service Account を発行
-4. Private Key を発行・保存
-5. Client ID / Client Secret / Service Account ID を控える
-
-### B. Bot
-
-1. Developer Console > Bot で Bot を作成
-2. Bot名例: `ジョイフルAI`
-3. Bot Secret を控える
-4. Bot ID を控える
-5. デプロイ後、Callback URL に次を指定
-
-```text
-https://YOUR-DOMAIN/api/lineworks/callback
+```powershell
+npm ci
+npm run pc
 ```
 
-6. Callbackを有効化し、Message Event を受信できるようにする
-7. LINE WORKS管理側でBotを利用メンバーに公開・追加する
+PC設定画面は http://127.0.0.1:8787 、PCのCallbackは8788です。設定画面で認証、モデル保存、応答テスト、LINE WORKS設定を行います。PCとCallback用HTTPSトンネルの常時起動が必要です。
 
-## 2. OpenAI API
-
-OpenAI Platform で API key を発行します。ChatGPT Plus等の契約とはAPI利用料金が別管理になる場合があります。
-
-## 3. 環境変数
-
-`.env.example` を参照し、VercelのEnvironment Variablesに以下を登録してください。
+## 検証
 
 ```text
-OPENAI_API_KEY
-OPENAI_MODEL
-LINEWORKS_BOT_ID
-LINEWORKS_BOT_SECRET
-LINEWORKS_CLIENT_ID
-LINEWORKS_CLIENT_SECRET
-LINEWORKS_SERVICE_ACCOUNT
-LINEWORKS_PRIVATE_KEY
-LINEWORKS_SCOPE
-BOT_SYSTEM_PROMPT（任意）
+npm test
+npm run build
 ```
 
-`LINEWORKS_PRIVATE_KEY` は改行を `\n` にして1行で登録しても動作します。
+OAuth、トークン更新、SSE完了判定、利用枠エラー、キュー重複防止、中継と署名検証をテストします。モック試験と、実アカウント・実LINE WORKSでの接続試験は区別しています。
 
-## 4. Vercelへデプロイ
+## 本番のLINE WORKS設定
 
-GitHubへこのフォルダをpushし、VercelでImport Projectします。環境変数を登録してDeployしてください。
+Vercelに `env.example` のLINE WORKS設定を登録します。`LINEWORKS_PRIVATE_KEY` は改行を `\n` に置換した1行でも使用できます。Callback URL:
 
-デプロイ後:
+https://joyful-lineworks-ai.vercel.app/api/lineworks/callback
 
-```text
-GET https://YOUR-DOMAIN/api/health
-```
+- CallbackでHMAC-SHA256/Base64署名検証
+- Service Account/RS256 JWTによるLINE WORKS認証
+- 1:1・複数人トークへの返信
+- `/help`・`/ping`
+- `/api/health`
 
-が `{"ok":true,...}` を返せばサーバーは稼働しています。
-
-その後、LINE WORKS BotのCallback URLを設定します。
-
-## 5. 動作テスト
-
-LINE WORKSでBotへ次を送信:
-
-```text
-/ping
-```
-
-正常なら:
-
-```text
-pong / ジョイフルAIは稼働中です。
-```
-
-次に:
-
-```text
-営業先への訪問お礼メールを丁寧に作って
-```
-
-と送信しAI回答が返れば接続完了です。
-
-## セキュリティ
-
-- `.env` やPrivate KeyをGitへコミットしないでください。
-- Callbackは必ず署名検証した後に処理します。
-- APIキー、Client Secret、Bot Secret、Private KeyはLINE WORKSトークに貼らないでください。
-- 本番運用では、利用可能ユーザー制限・ログ保持方針・機密データの取扱いルールを追加してください。
-
-## 次の拡張候補
-
-- Gmail検索・返信案作成
-- Google Drive社内資料検索
-- BigQueryの稼働率・売上・運行データ照会
-- 画像/PDF入力
-- ユーザー別権限
-- 会話履歴の保持
-- 管理画面・利用ログ
-
+ChatGPT OAuthトークン・APIキー・LINE WORKS秘密鍵をGitへコミットしないでください。ChatGPTの認証はPC側の公式認証画面で行います。
