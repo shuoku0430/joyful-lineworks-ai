@@ -5,8 +5,9 @@ export class Queue {
   transact(fn) {
     const operation = this.lock.then(async () => {
       const data = await this.store.read("queue", { jobs: [], seen: {} });
+      const before = JSON.stringify(data);
       const result = await fn(data);
-      await this.store.write("queue", data);
+      if (JSON.stringify(data) !== before) await this.store.write("queue", data);
       return result;
     });
     this.lock = operation.catch(() => {});

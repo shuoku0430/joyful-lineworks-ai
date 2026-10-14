@@ -30,7 +30,7 @@ Windowsでは取得したフォルダの `start-pc.cmd` をダブルクリック
 4. 戻った設定画面でモデルを選択し「モデル保存」。一覧が出るだけでは接続成功の判定になりません。
 5. 「ChatGPT利用枠で応答テスト」を押し、`検証完了（response.completed受信）` を確認する。
 6. LINE WORKSの既存設定を画面に入力して保存する。秘密情報はチャットやGitHubへ貼らない。
-7. `LINEWORKS_ALLOWED_USER_IDS` にテストする自分のLINE WORKSユーザーIDを入力する。複数ならカンマ区切り。未指定ではAI応答しない。LINE WORKSの管理者/API側で確認したIDを使う（表示名ではない）。
+7. ユーザーIDが分からない場合は空欄で保存し、Callback接続後に「本人登録コードを発行」を押します。表示された `/pair ...` を10分以内に、ご本人のLINE WORKSからBotとの1:1トークへ送ると、署名検証済みの送信元ユーザーIDを登録します。コードを他の人に共有しないでください。登録完了後は `/ping` と通常の質問で確認します。既知のユーザーIDをカンマ区切りで手入力することもできます。
 
 `LINEWORKS_PRIVATE_KEY` はPEM全体を入力します。改行を `\n` に置き換えた文字列でも使用できます。保存済みフィールドは空欄で保持されます。
 
@@ -61,7 +61,7 @@ LINE WORKSのCallback URLは現在のままです:
 
 https://joyful-lineworks-ai.vercel.app/api/lineworks/callback
 
-Vercelを経由せず、LINE WORKSのCallbackをPCのHTTPSトンネルへ直接設定して検証することもできます。この場合もPCで署名検証します。
+GitHubやVercelへの変更ができない場合は、LINE WORKSのBot設定でCallbackを `https://YOUR-PC-TUNNEL/api/lineworks/callback` へ直接変更します。この場合もPCで署名検証します。AIアプリだけを再起動する際は、トンネルの黒い画面を閉じないでください。認証・LINE WORKS設定は同じWindowsユーザーの保存先から再利用します。
 
 ## 4. 実機で確認
 
