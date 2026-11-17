@@ -26,6 +26,8 @@ jobs:
           A: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           echo "token length: ${#T} / account id length: ${#A}"
+          echo "token has whitespace: $(printf '%s' "$T" | grep -c '[[:space:]]') / prefix: $(printf '%s' "$T" | cut -c1-4 | sed 's/[A-Za-z0-9]/x/g')"
+          echo "account-token verify:"; curl -s -H "Authorization: Bearer $T" "https://api.cloudflare.com/client/v4/accounts/$A/tokens/verify" | jq -c '{success, status: .result.status, errors}' 
           curl -s -H "Authorization: Bearer $T" https://api.cloudflare.com/client/v4/user/tokens/verify | jq -c '{success, status: .result.status, errors}'
           echo "accounts visible to token (*** = matches CLOUDFLARE_ACCOUNT_ID):"
           curl -s -H "Authorization: Bearer $T" "https://api.cloudflare.com/client/v4/accounts?per_page=50" | jq -r '.result[]? | "\(.id)  \(.name)"'
