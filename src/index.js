@@ -211,31 +211,60 @@ async function reply(env, source, text) {
 
 /* ---------- Gemini API（Google AI Studio） ---------- */
 
+// waitUntil は応答後およそ30秒で打ち切られるため、全体を25秒以内に収める
+const GEMINI_DEADLINE_MS = 25_000;
+
 async function askGemini(env, text) {
-  const model = env.GEMINI_MODEL || "gemini-3.8-flash";
-  const call = () => fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-    {
-      method: "POST",
-      headers: { "x-goog-api-key": String(env.GEMINI_API_KEY).trim(), "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: env.BOT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text }] }],
-        generationConfig: { maxOutputTokens: 4096, temperature: 0.4 },
-      }),
+  const models = [env.GEMINI_MODEL || "gemini-3.8-flash"]
+    .concat(String(env.GEMINI_FALLBACK_MODELS || "gemini-3.7-flash").split(",").map((m) => m.trim()).filter(Boolean));
+  const deadline = Date.now() + GEMINI_DEADLINE_MS;
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: env.BOT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT }] },
+    contents: [{ role: "user", parts: [{ text }] }],
+    generationConfig: { maxOutputTokens: 4096, temperature: 0.4 },
+  });
+
+  let lastError;
+  // 混雑（503）・制限（429）・提供終了（404）・タイムアウトは次のモデルへ。503は同じモデルで1回だけ再試行
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const remaining = deadline - Date.now();
+      if (remaining < 3000) throw lastError || new Error("Gemini API error 504: time budget exhausted");
+      let res;
+      try {
+        res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+          {
+            method: "POST",
+            headers: { "x-goog-api-key": String(env.GEMINI_API_KEY).trim(), "Content-Type": "application/json" },
+            body,
+            signal: AbortSignal.timeout(Math.min(remaining - 1000, 15_000)),
+          }
+        );
+      } catch (e) {
+        lastError = new Error(`Gemini API error 504: ${model} timeout`);
+        console.warn(lastError.message);
+        break; // 次のモデルへ
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        if (data.promptFeedback?.blockReason) return "この内容には回答できませんでした。";
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        const out = parts.map((p) => p.text || "").join("").trim();
+        if (model !== models[0]) console.log(`answered by fallback model ${model}`);
+        return out || "回答を生成できませんでした。もう一度お試しください。";
+      }
+      lastError = new Error(`Gemini API error ${res.status}: ${model} ${JSON.stringify(data).slice(0, 400)}`);
+      console.warn(lastError.message);
+      if (res.status === 503 && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      if ([503, 429, 404].includes(res.status)) break; // 次のモデルへ
+      throw lastError; // 400/401/403 などは設定ミスなので打ち切り
     }
-  );
-  // 混雑（503）・一時的な制限（429）は少し待って最大2回まで再試行
-  let res = await call();
-  for (let i = 0; i < 2 && (res.status === 503 || res.status === 429); i++) {
-    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
-    res = await call();
   }
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Gemini API error ${res.status}: ${JSON.stringify(data).slice(0, 800)}`);
-  if (data.promptFeedback?.blockReason) return "この内容には回答できませんでした。";
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  return parts.map((p) => p.text || "").join("").trim() || "回答を生成できませんでした。もう一度お試しください。";
+  throw lastError;
 }
 
 /* ---------- OpenAI Responses API ---------- */
