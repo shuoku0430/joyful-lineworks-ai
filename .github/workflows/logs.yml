@@ -1,0 +1,25 @@
+name: Recent logs (debug)
+
+# 手動実行で直近のWorkerログ（Observability）を取得する
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "何分前まで遡るか"
+        default: "30"
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query
+        env:
+          T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          A: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          to=$(( $(date +%s) * 1000 )); from=$(( to - ${{ inputs.minutes }} * 60000 ))
+          body=$(jq -nc --argjson f $from --argjson t $to '{queryId:"joyful-debug", timeframe:{from:$f,to:$t}, view:"events", limit:50, parameters:{filters:[{key:"$metadata.service", operation:"eq", type:"string", value:"joyful-lineworks-ai"}]}}')
+          curl -s -X POST -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/accounts/$A/workers/observability/telemetry/query" -d "$body" > out.json
+          jq -c '{success, errors}' out.json
+          jq -r '.result.events.events[]? | [(.timestamp/1000|todate), (.["$metadata"].level // ""), (.["$metadata"].message // .source.message // "" | tostring | .[0:600])] | @tsv' out.json | sort | tail -40
