@@ -208,7 +208,7 @@ async function reply(env, source, text) {
 /* ---------- Gemini API（Google AI Studio） ---------- */
 
 async function askGemini(env, text) {
-  const model = env.GEMINI_MODEL || "gemini-4-hydrogen";
+  const model = env.GEMINI_MODEL || "gemini-3.8-flash";
   const call = () => fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
