@@ -19,6 +19,16 @@ jobs:
             echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID が未登録のためデプロイをスキップしました（README参照）"
             echo "SKIP=1" >> "$GITHUB_ENV"
           fi
+      - name: Diagnose Cloudflare token
+        if: env.SKIP != '1'
+        env:
+          T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          A: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "token length: ${#T} / account id length: ${#A}"
+          curl -s -H "Authorization: Bearer $T" https://api.cloudflare.com/client/v4/user/tokens/verify | jq -c '{success, status: .result.status, errors}'
+          echo "accounts visible to token (*** = matches CLOUDFLARE_ACCOUNT_ID):"
+          curl -s -H "Authorization: Bearer $T" "https://api.cloudflare.com/client/v4/accounts?per_page=50" | jq -r '.result[]? | "\(.id)  \(.name)"'
       - uses: cloudflare/wrangler-action@v3
         if: env.SKIP != '1'
         with:
