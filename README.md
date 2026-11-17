@@ -1,6 +1,6 @@
-# ジョイフルAI — LINE WORKS × OpenAI（Cloudflare Workers）
+# ジョイフルAI — LINE WORKS × Gemini（Cloudflare Workers）
 
-LINE WORKS のトークでBotに話しかけると、OpenAI が回答して返信するBotです。
+LINE WORKS のトークでBotに話しかけると、AI（既定はGemini）が回答して返信するBotです。
 Cloudflare Workers 上で常時稼働するため、PCの起動やトンネルは不要で、Callback URL も固定です。
 
 - `POST /callback` … LINE WORKS の Callback URL
@@ -47,7 +47,8 @@ Cloudflare ダッシュボード → **Workers & Pages → joyful-lineworks-ai �
 | `LINEWORKS_CLIENT_SECRET` | 同 Client Secret |
 | `LINEWORKS_SERVICE_ACCOUNT` | 同 Service Account（`xxxxx.serviceaccount@ドメイン`） |
 | `LINEWORKS_PRIVATE_KEY` | 同 Private Key ファイル（.key）の中身を丸ごと |
-| `OPENAI_API_KEY` | OpenAI Platform の API キー（ChatGPTの契約とは別課金） |
+| `GEMINI_API_KEY` | Google AI Studio の API キー（既定のAI。`AI_PROVIDER = "gemini"`） |
+| `OPENAI_API_KEY` | OpenAI を使う場合のみ（`wrangler.toml` の `AI_PROVIDER` を `"openai"` に） |
 | `BOT_SYSTEM_PROMPT` | 任意。AIへの指示文を変えたいとき |
 
 `https://joyful-lineworks-ai.<あなたのサブドメイン>.workers.dev/health` を開いて `"ok": true` なら設定完了。
@@ -68,7 +69,7 @@ Botに `/ping` → `pong / ジョイフルAIは稼働中です。` が返ればO
 
 ## 設定の変更
 
-- モデル：`wrangler.toml` の `OPENAI_MODEL`
+- AI・モデル：`wrangler.toml` の `AI_PROVIDER`（gemini / openai）、`GEMINI_MODEL`、`OPENAI_MODEL`
 - ログ：Cloudflare ダッシュボード → Worker → **Logs**（エラー内容はここに出ます）
 
 ## セキュリティ

@@ -1,5 +1,5 @@
 /**
- * ジョイフルAI — LINE WORKS Bot × OpenAI（Cloudflare Workers 版）
+ * ジョイフルAI — LINE WORKS Bot × Gemini / OpenAI（Cloudflare Workers 版）
  *
  *   POST /callback  … LINE WORKS の Callback URL に設定する
  *   GET  /health    … 稼働確認
@@ -24,8 +24,8 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/health") {
-      const missing = REQUIRED.filter((k) => !env[k]);
-      return Response.json({ ok: missing.length === 0, missing, service: "joyful-lineworks-ai" });
+      const missing = requiredKeys(env).filter((k) => !env[k]);
+      return Response.json({ ok: missing.length === 0, missing, provider: provider(env), service: "joyful-lineworks-ai" });
     }
 
     if (request.method === "POST" && (url.pathname === "/callback" || url.pathname === "/")) {
@@ -43,8 +43,16 @@ const REQUIRED = [
   "LINEWORKS_CLIENT_SECRET",
   "LINEWORKS_SERVICE_ACCOUNT",
   "LINEWORKS_PRIVATE_KEY",
-  "OPENAI_API_KEY",
 ];
+
+// AI_PROVIDER = "gemini"（既定）または "openai"
+function provider(env) {
+  return String(env.AI_PROVIDER || "gemini").trim().toLowerCase();
+}
+
+function requiredKeys(env) {
+  return [...REQUIRED, provider(env) === "openai" ? "OPENAI_API_KEY" : "GEMINI_API_KEY"];
+}
 
 async function handleCallback(request, env, ctx) {
   const rawBody = await request.text();
@@ -96,7 +104,7 @@ async function processEvent(event, env) {
 
   let answer;
   try {
-    answer = await askOpenAI(env, text);
+    answer = provider(env) === "openai" ? await askOpenAI(env, text) : await askGemini(env, text);
   } catch (e) {
     console.error(e?.message || e);
     answer = "AIへの問い合わせでエラーが発生しました。しばらくしてからもう一度お試しください。";
@@ -195,6 +203,29 @@ async function reply(env, source, text) {
     body: JSON.stringify({ content: { type: "text", text: String(text).slice(0, 18000) } }),
   });
   if (!res.ok) throw new Error(`LINE WORKS message error ${res.status}: ${await res.text()}`);
+}
+
+/* ---------- Gemini API（Google AI Studio） ---------- */
+
+async function askGemini(env, text) {
+  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: "POST",
+      headers: { "x-goog-api-key": String(env.GEMINI_API_KEY).trim(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: env.BOT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT }] },
+        contents: [{ role: "user", parts: [{ text }] }],
+        generationConfig: { maxOutputTokens: 1500, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+      }),
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Gemini API error ${res.status}: ${JSON.stringify(data).slice(0, 800)}`);
+  if (data.promptFeedback?.blockReason) return "この内容には回答できませんでした。";
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  return parts.map((p) => p.text || "").join("").trim() || "回答を生成できませんでした。もう一度お試しください。";
 }
 
 /* ---------- OpenAI Responses API ---------- */
