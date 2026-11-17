@@ -1,0 +1,27 @@
+name: Tail logs (debug)
+
+# 手動実行で Worker のログを一定時間記録する（トラブル調査用）
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "記録する秒数"
+        default: "150"
+
+jobs:
+  tail:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --silent
+      - name: Tail
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          timeout ${{ inputs.seconds }} npx wrangler tail joyful-lineworks-ai --format json > tail.jsonl || true
+          echo "== events: $(wc -l < tail.jsonl)"
+          jq -c '{t:.eventTimestamp, path:(.event.request.url // "" | sub("https://[^/]+";"")), method:.event.request.method, status:.event.response.status, outcome, logs:[.logs[]?.message], exceptions:[.exceptions[]?.message]}' tail.jsonl || cat tail.jsonl
