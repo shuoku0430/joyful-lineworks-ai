@@ -1,6 +1,7 @@
+# ローカル開発用（wrangler dev）。本番の値は Cloudflare の Secrets に登録する。
 # OpenAI
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-6-astra
+
 
 # LINE WORKS Bot
 LINEWORKS_BOT_ID=2000001

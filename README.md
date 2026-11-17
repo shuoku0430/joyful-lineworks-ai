@@ -1,118 +1,77 @@
-# ジョイフルAI — LINE WORKS × OpenAI
+# ジョイフルAI — LINE WORKS × OpenAI（Cloudflare Workers）
 
-LINE WORKS のトークに投稿されたテキストを OpenAI Responses API に渡し、Bot が同じ1:1トークまたは複数人トークへ返信する最小構成です。
+LINE WORKS のトークでBotに話しかけると、OpenAI が回答して返信するBotです。
+Cloudflare Workers 上で常時稼働するため、PCの起動やトンネルは不要で、Callback URL も固定です。
 
-## 実装済み
+- `POST /callback` … LINE WORKS の Callback URL
+- `GET /health` … 稼働確認（未設定の項目があれば `missing` に表示）
+- main に push すると GitHub Actions が自動でデプロイ
 
-- LINE WORKS Callback受信
-- `X-WORKS-Signature` の HMAC-SHA256 / Base64 検証
-- `X-WORKS-BotId` の照合
-- Service Account + RS256 JWT による Access Token 発行
-- Access Token のメモリキャッシュ
-- 1:1 / 複数人トークの自動判定
-- OpenAI Responses API による回答生成
-- `/help` / `/ping`
-- 非テキストメッセージへの案内
-- Health check `/api/health`
+## 構成
 
-## 1. LINE WORKS Developer Console
-
-### A. API Client App（認証アプリ）
-
-1. Developer Console > API > ClientApp で認証アプリを作成
-2. Scope に `bot` を追加
-3. Service Account を発行
-4. Private Key を発行・保存
-5. Client ID / Client Secret / Service Account ID を控える
-
-### B. Bot
-
-1. Developer Console > Bot で Bot を作成
-2. Bot名例: `ジョイフルAI`
-3. Bot Secret を控える
-4. Bot ID を控える
-5. デプロイ後、Callback URL に次を指定
-
-```text
-https://YOUR-DOMAIN/api/lineworks/callback
+```
+LINE WORKS ──(Callback, 署名付き)──▶ Cloudflare Worker ──▶ OpenAI
+                 ▲                         │
+                 └──────(Bot APIで返信)─────┘
 ```
 
-6. Callbackを有効化し、Message Event を受信できるようにする
-7. LINE WORKS管理側でBotを利用メンバーに公開・追加する
+- `X-WORKS-Signature`（HMAC-SHA256）を検証してから処理
+- LINE WORKS には即 200 を返し、AIの返答はバックグラウンドで送信（タイムアウトしない）
+- Service Account + RS256 JWT で Access Token を発行・キャッシュ
 
-## 2. OpenAI API
+## 初回セットアップ
 
-OpenAI Platform で API key を発行します。ChatGPT Plus等の契約とはAPI利用料金が別管理になる場合があります。
+### 1. Cloudflare アカウント（無料）
 
-## 3. 環境変数
+https://dash.cloudflare.com/sign-up で作成。Workers の無料枠（1日10万リクエスト）で足ります。
 
-`.env.example` を参照し、VercelのEnvironment Variablesに以下を登録してください。
+### 2. GitHub に Cloudflare の鍵を登録
 
-```text
-OPENAI_API_KEY
-OPENAI_MODEL
-LINEWORKS_BOT_ID
-LINEWORKS_BOT_SECRET
-LINEWORKS_CLIENT_ID
-LINEWORKS_CLIENT_SECRET
-LINEWORKS_SERVICE_ACCOUNT
-LINEWORKS_PRIVATE_KEY
-LINEWORKS_SCOPE
-BOT_SYSTEM_PROMPT（任意）
+1. Cloudflare ダッシュボード → 右上アイコン → **My Profile → API Tokens → Create Token**
+2. テンプレート **「Edit Cloudflare Workers」** → Use template → Account Resources は自分のアカウント、Zone Resources は **All zones** → Create Token → 表示されたトークンをコピー
+3. Cloudflare ダッシュボードのトップ（Workers & Pages）右側の **Account ID** をコピー
+4. GitHub このリポジトリ → **Settings → Secrets and variables → Actions → New repository secret** で2つ登録
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
+5. **Actions → Deploy to Cloudflare Workers → Run workflow**
+
+### 3. Worker に秘密情報を登録
+
+Cloudflare ダッシュボード → **Workers & Pages → joyful-lineworks-ai → Settings → Variables and Secrets → Add**（Type は **Secret**）
+
+| 名前 | 値 |
+|---|---|
+| `LINEWORKS_BOT_ID` | Developer Console > Bot の Bot ID |
+| `LINEWORKS_BOT_SECRET` | 同 Bot Secret |
+| `LINEWORKS_CLIENT_ID` | Developer Console > API > ClientApp の Client ID |
+| `LINEWORKS_CLIENT_SECRET` | 同 Client Secret |
+| `LINEWORKS_SERVICE_ACCOUNT` | 同 Service Account（`xxxxx.serviceaccount@ドメイン`） |
+| `LINEWORKS_PRIVATE_KEY` | 同 Private Key ファイル（.key）の中身を丸ごと |
+| `OPENAI_API_KEY` | OpenAI Platform の API キー（ChatGPTの契約とは別課金） |
+| `BOT_SYSTEM_PROMPT` | 任意。AIへの指示文を変えたいとき |
+
+`https://joyful-lineworks-ai.<あなたのサブドメイン>.workers.dev/health` を開いて `"ok": true` なら設定完了。
+
+### 4. LINE WORKS の Callback URL を変更
+
+Developer Console → Bot → 対象Bot → Callback URL を
+
+```
+https://joyful-lineworks-ai.<あなたのサブドメイン>.workers.dev/callback
 ```
 
-`LINEWORKS_PRIVATE_KEY` は改行を `\n` にして1行で登録しても動作します。
+に変更して保存。以後このURLは変わりません。
 
-## 4. Vercelへデプロイ
+### 5. 動作テスト
 
-GitHubへこのフォルダをpushし、VercelでImport Projectします。環境変数を登録してDeployしてください。
+Botに `/ping` → `pong / ジョイフルAIは稼働中です。` が返ればOK。続けて普通の質問を送ってAIの回答が返るか確認。
 
-デプロイ後:
+## 設定の変更
 
-```text
-GET https://YOUR-DOMAIN/api/health
-```
-
-が `{"ok":true,...}` を返せばサーバーは稼働しています。
-
-その後、LINE WORKS BotのCallback URLを設定します。
-
-## 5. 動作テスト
-
-LINE WORKSでBotへ次を送信:
-
-```text
-/ping
-```
-
-正常なら:
-
-```text
-pong / ジョイフルAIは稼働中です。
-```
-
-次に:
-
-```text
-営業先への訪問お礼メールを丁寧に作って
-```
-
-と送信しAI回答が返れば接続完了です。
+- モデル：`wrangler.toml` の `OPENAI_MODEL`
+- ログ：Cloudflare ダッシュボード → Worker → **Logs**（エラー内容はここに出ます）
 
 ## セキュリティ
 
-- `.env` やPrivate KeyをGitへコミットしないでください。
-- Callbackは必ず署名検証した後に処理します。
-- APIキー、Client Secret、Bot Secret、Private KeyはLINE WORKSトークに貼らないでください。
-- 本番運用では、利用可能ユーザー制限・ログ保持方針・機密データの取扱いルールを追加してください。
-
-## 次の拡張候補
-
-- Gmail検索・返信案作成
-- Google Drive社内資料検索
-- BigQueryの稼働率・売上・運行データ照会
-- 画像/PDF入力
-- ユーザー別権限
-- 会話履歴の保持
-- 管理画面・利用ログ
-
+- 秘密情報は Cloudflare の Secrets にのみ置き、Git・トーク・チャットに貼らない
+- このリポジトリは公開設定のため、秘密情報を絶対にコミットしないこと

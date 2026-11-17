@@ -1,0 +1,11 @@
+name = "joyful-lineworks-ai"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+LINEWORKS_SCOPE = "bot"
+OPENAI_MODEL = "gpt-6-astra"
+
+[observability]
+enabled = true
