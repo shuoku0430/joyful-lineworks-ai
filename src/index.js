@@ -107,7 +107,11 @@ async function processEvent(event, env) {
     answer = provider(env) === "openai" ? await askOpenAI(env, text) : await askGemini(env, text);
   } catch (e) {
     console.error(e?.message || e);
-    answer = "AIへの問い合わせでエラーが発生しました。しばらくしてからもう一度お試しください。";
+    const code = /error (\d{3})/.exec(String(e?.message))?.[1];
+    const hint = code === "429" ? "（利用回数の上限に達しました。少し時間をおいてください）"
+      : code === "503" ? "（AI側が混雑しています）"
+      : code ? `（エラーコード ${code}）` : "";
+    answer = `AIへの問い合わせでエラーが発生しました${hint}。しばらくしてからもう一度お試しください。`;
   }
   await reply(env, event.source, answer);
 }
