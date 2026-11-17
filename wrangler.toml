@@ -10,7 +10,7 @@ LINEWORKS_SCOPE = "bot"
 AI_PROVIDER = "gemini"
 GEMINI_MODEL = "gemini-3.8-flash"
 # 混雑時などに順に試す予備モデル（カンマ区切り）
-GEMINI_FALLBACK_MODELS = "gemini-3.7-flash"
+GEMINI_FALLBACK_MODELS = "gemini-4-hydrogen,gemini-3.7-flash"
 OPENAI_MODEL = "gpt-6-astra"
 
 [observability]

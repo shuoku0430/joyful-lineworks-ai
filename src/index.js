@@ -216,7 +216,7 @@ const GEMINI_DEADLINE_MS = 25_000;
 
 async function askGemini(env, text) {
   const models = [env.GEMINI_MODEL || "gemini-3.8-flash"]
-    .concat(String(env.GEMINI_FALLBACK_MODELS || "gemini-3.7-flash").split(",").map((m) => m.trim()).filter(Boolean));
+    .concat(String(env.GEMINI_FALLBACK_MODELS || "gemini-4-hydrogen,gemini-3.7-flash").split(",").map((m) => m.trim()).filter(Boolean));
   const deadline = Date.now() + GEMINI_DEADLINE_MS;
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: env.BOT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT }] },
@@ -238,7 +238,7 @@ async function askGemini(env, text) {
             method: "POST",
             headers: { "x-goog-api-key": String(env.GEMINI_API_KEY).trim(), "Content-Type": "application/json" },
             body,
-            signal: AbortSignal.timeout(Math.min(remaining - 1000, 15_000)),
+            signal: AbortSignal.timeout(Math.min(remaining - 1000, 9_000)),
           }
         );
       } catch (e) {
@@ -256,7 +256,7 @@ async function askGemini(env, text) {
       }
       lastError = new Error(`Gemini API error ${res.status}: ${model} ${JSON.stringify(data).slice(0, 400)}`);
       console.warn(lastError.message);
-      if (res.status === 503 && attempt === 0) {
+      if (res.status === 503 && attempt === 0 && model !== models[0]) {
         await new Promise((r) => setTimeout(r, 1000));
         continue;
       }
