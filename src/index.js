@@ -208,7 +208,7 @@ async function reply(env, source, text) {
 /* ---------- Gemini API（Google AI Studio） ---------- */
 
 async function askGemini(env, text) {
-  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = env.GEMINI_MODEL || "gemini-3.8-flash";
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
@@ -217,7 +217,7 @@ async function askGemini(env, text) {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: env.BOT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text }] }],
-        generationConfig: { maxOutputTokens: 1500, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } },
+        generationConfig: { maxOutputTokens: 4096, temperature: 0.4 },
       }),
     }
   );

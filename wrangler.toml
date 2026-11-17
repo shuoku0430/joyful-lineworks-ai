@@ -8,7 +8,7 @@ keep_vars = true
 [vars]
 LINEWORKS_SCOPE = "bot"
 AI_PROVIDER = "gemini"
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.8-flash"
 OPENAI_MODEL = "gpt-6-astra"
 
 [observability]
