@@ -49,12 +49,14 @@ const REQUIRED = [
 async function handleCallback(request, env, ctx) {
   const rawBody = await request.text();
 
-  if (!(await verifySignature(rawBody, request.headers.get("x-works-signature"), env.LINEWORKS_BOT_SECRET))) {
-    return new Response("Invalid signature", { status: 401 });
-  }
   const botIdHeader = request.headers.get("x-works-botid");
-  if (botIdHeader && String(env.LINEWORKS_BOT_ID) !== botIdHeader) {
+  if (botIdHeader && String(env.LINEWORKS_BOT_ID).trim() !== botIdHeader.trim()) {
+    console.warn(`401 bot id mismatch: header=${botIdHeader} configured(len)=${String(env.LINEWORKS_BOT_ID).trim().length}`);
     return new Response("Invalid bot id", { status: 401 });
+  }
+  if (!(await verifySignature(rawBody, request.headers.get("x-works-signature"), String(env.LINEWORKS_BOT_SECRET || "").trim()))) {
+    console.warn(`401 signature mismatch: signature header ${request.headers.get("x-works-signature") ? "present" : "missing"}, bot secret length=${String(env.LINEWORKS_BOT_SECRET || "").trim().length}`);
+    return new Response("Invalid signature", { status: 401 });
   }
 
   let event;
