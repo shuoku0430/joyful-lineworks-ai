@@ -2,6 +2,8 @@ name = "joyful-lineworks-ai"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
 workers_dev = true
+# ダッシュボードで追加した変数をデプロイ時に消さない
+keep_vars = true
 
 [vars]
 LINEWORKS_SCOPE = "bot"
