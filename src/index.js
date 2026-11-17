@@ -209,7 +209,7 @@ async function reply(env, source, text) {
 
 async function askGemini(env, text) {
   const model = env.GEMINI_MODEL || "gemini-4-hydrogen";
-  const res = await fetch(
+  const call = () => fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: "POST",
@@ -221,6 +221,12 @@ async function askGemini(env, text) {
       }),
     }
   );
+  // 混雑（503）・一時的な制限（429）は少し待って最大2回まで再試行
+  let res = await call();
+  for (let i = 0; i < 2 && (res.status === 503 || res.status === 429); i++) {
+    await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+    res = await call();
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(`Gemini API error ${res.status}: ${JSON.stringify(data).slice(0, 800)}`);
   if (data.promptFeedback?.blockReason) return "この内容には回答できませんでした。";
