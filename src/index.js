@@ -28,7 +28,7 @@ export default {
       return Response.json({ ok: missing.length === 0, missing, service: "joyful-lineworks-ai" });
     }
 
-    if (request.method === "POST" && url.pathname === "/callback") {
+    if (request.method === "POST" && (url.pathname === "/callback" || url.pathname === "/")) {
       return handleCallback(request, env, ctx);
     }
 
