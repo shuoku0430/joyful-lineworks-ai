@@ -34,6 +34,19 @@ jobs:
             echo "$name: $(echo "$r" | jq -c .errors)"
           done
           echo "::error::workers.dev サブドメインを登録できませんでした"; exit 1
+      - name: Ensure queue
+        if: env.SKIP != '1'
+        env:
+          T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          A: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          api="https://api.cloudflare.com/client/v4/accounts/$A/queues"
+          if curl -s -H "Authorization: Bearer $T" "$api?per_page=100" | jq -e '.result[]? | select(.queue_name=="lineworks-jobs")' >/dev/null; then
+            echo "queue exists"; exit 0
+          fi
+          r=$(curl -s -X POST -H "Authorization: Bearer $T" -H "Content-Type: application/json" -d '{"queue_name":"lineworks-jobs"}' "$api")
+          echo "$r" | jq -c '{success, errors}'
+          [ "$(echo "$r" | jq -r .success)" = "true" ] || { echo "::error::キューを作成できませんでした（APIトークンに Queues の編集権限が必要）"; exit 1; }
       - uses: cloudflare/wrangler-action@v3
         if: env.SKIP != '1'
         with:

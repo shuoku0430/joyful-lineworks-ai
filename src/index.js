@@ -20,6 +20,7 @@ LINE WORKS上で読みやすいよう、長すぎる回答は避けてくださ�
 let tokenCache = null;
 
 export default {
+  queue: (batch, env) => queue(batch, env),
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
@@ -74,14 +75,34 @@ async function handleCallback(request, env, ctx) {
     return new Response("Bad request", { status: 400 });
   }
 
-  // LINE WORKS にはすぐ 200 を返し、返答処理はバックグラウンドで行う
-  ctx.waitUntil(
-    processEvent(event, env).catch((e) => console.error("callback processing failed", e?.stack || e))
-  );
+  // LINE WORKS にはすぐ 200 を返し、返答処理はキュー（最大15分）で行う。
+  // キューが無い環境では waitUntil（約30秒まで）で処理する
+  if (event.type === "message" && env.JOBS) {
+    await env.JOBS.send(event);
+  } else {
+    ctx.waitUntil(
+      processEvent(event, env, WAITUNTIL_BUDGET_MS).catch((e) => console.error("callback processing failed", e?.stack || e))
+    );
+  }
   return new Response(null, { status: 200 });
 }
 
-async function processEvent(event, env) {
+const WAITUNTIL_BUDGET_MS = 25_000;
+const QUEUE_BUDGET_MS = 180_000;
+
+// キューのコンシューマー：1件ずつ処理。失敗しても再送はしない（二重返信を防ぐ）
+export async function queue(batch, env) {
+  for (const msg of batch.messages) {
+    try {
+      await processEvent(msg.body, env, QUEUE_BUDGET_MS);
+    } catch (e) {
+      console.error("queue processing failed", e?.stack || e);
+    }
+    msg.ack();
+  }
+}
+
+async function processEvent(event, env, budgetMs = WAITUNTIL_BUDGET_MS) {
   if (event.type !== "message") return;
 
   if (event.content?.type !== "text") {
@@ -104,7 +125,7 @@ async function processEvent(event, env) {
 
   let answer;
   try {
-    answer = provider(env) === "openai" ? await askOpenAI(env, text) : await askGemini(env, text);
+    answer = provider(env) === "openai" ? await askOpenAI(env, text) : await askGemini(env, text, budgetMs);
   } catch (e) {
     console.error(e?.message || e);
     const code = /error (\d{3})/.exec(String(e?.message))?.[1];
@@ -211,13 +232,12 @@ async function reply(env, source, text) {
 
 /* ---------- Gemini API（Google AI Studio） ---------- */
 
-// waitUntil は応答後およそ30秒で打ち切られるため、全体を25秒以内に収める
-const GEMINI_DEADLINE_MS = 25_000;
-
-async function askGemini(env, text) {
+async function askGemini(env, text, budgetMs = WAITUNTIL_BUDGET_MS) {
   const models = [env.GEMINI_MODEL || "gemini-3.8-flash"]
     .concat(String(env.GEMINI_FALLBACK_MODELS || "gemini-4-hydrogen,gemini-3.7-flash").split(",").map((m) => m.trim()).filter(Boolean));
-  const deadline = Date.now() + GEMINI_DEADLINE_MS;
+  const deadline = Date.now() + budgetMs;
+  // 1モデルあたりの待ち時間：キュー処理なら60秒、waitUntilなら15秒
+  const perModelMs = budgetMs > 60_000 ? 60_000 : 15_000;
   // 社内チャット用途なので思考は浅め（速さ優先）。モデルが非対応なら思考設定なしで再送する
   const makeBody = (withThinking) => JSON.stringify({
     systemInstruction: { parts: [{ text: env.BOT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT }] },
@@ -237,6 +257,7 @@ async function askGemini(env, text) {
       const remaining = deadline - Date.now();
       if (remaining < 3000) throw lastError || new Error("Gemini API error 504: time budget exhausted");
       let res;
+      const started = Date.now();
       try {
         res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
@@ -244,12 +265,11 @@ async function askGemini(env, text) {
             method: "POST",
             headers: { "x-goog-api-key": String(env.GEMINI_API_KEY).trim(), "Content-Type": "application/json" },
             body: makeBody(withThinking),
-            // 1つ目のモデルには長めに待つ（遅いだけのことが多い）。予備モデルは残り時間で
-            signal: AbortSignal.timeout(model === models[0] ? Math.min(remaining - 1000, 15_000) : remaining - 1000),
+            signal: AbortSignal.timeout(Math.min(remaining - 1000, perModelMs)),
           }
         );
       } catch (e) {
-        lastError = new Error(`Gemini API error 504: ${model} timeout`);
+        lastError = new Error(`Gemini API error 504: ${model} timeout after ${Date.now() - started}ms`);
         console.warn(lastError.message);
         break; // 次のモデルへ
       }
@@ -258,7 +278,7 @@ async function askGemini(env, text) {
         if (data.promptFeedback?.blockReason) return "この内容には回答できませんでした。";
         const parts = data.candidates?.[0]?.content?.parts || [];
         const out = parts.map((p) => p.text || "").join("").trim();
-        if (model !== models[0]) console.log(`answered by fallback model ${model}`);
+        console.log(`answered by ${model} in ${Date.now() - started}ms`);
         return out || "回答を生成できませんでした。もう一度お試しください。";
       }
       lastError = new Error(`Gemini API error ${res.status}: ${model} ${JSON.stringify(data).slice(0, 400)}`);
