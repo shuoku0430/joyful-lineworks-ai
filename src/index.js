@@ -218,11 +218,17 @@ async function askGemini(env, text) {
   const models = [env.GEMINI_MODEL || "gemini-3.8-flash"]
     .concat(String(env.GEMINI_FALLBACK_MODELS || "gemini-4-hydrogen,gemini-3.7-flash").split(",").map((m) => m.trim()).filter(Boolean));
   const deadline = Date.now() + GEMINI_DEADLINE_MS;
-  const body = JSON.stringify({
+  // 社内チャット用途なので思考は浅め（速さ優先）。モデルが非対応なら思考設定なしで再送する
+  const makeBody = (withThinking) => JSON.stringify({
     systemInstruction: { parts: [{ text: env.BOT_SYSTEM_PROMPT || DEFAULT_SYSTEM_PROMPT }] },
     contents: [{ role: "user", parts: [{ text }] }],
-    generationConfig: { maxOutputTokens: 4096, temperature: 0.4 },
+    generationConfig: {
+      maxOutputTokens: 4096,
+      temperature: 0.4,
+      ...(withThinking ? { thinkingConfig: { thinkingLevel: env.GEMINI_THINKING_LEVEL || "low" } } : {}),
+    },
   });
+  let withThinking = true;
 
   let lastError;
   // 混雑（503）・制限（429）・提供終了（404）・タイムアウトは次のモデルへ。503は同じモデルで1回だけ再試行
@@ -237,8 +243,9 @@ async function askGemini(env, text) {
           {
             method: "POST",
             headers: { "x-goog-api-key": String(env.GEMINI_API_KEY).trim(), "Content-Type": "application/json" },
-            body,
-            signal: AbortSignal.timeout(Math.min(remaining - 1000, 9_000)),
+            body: makeBody(withThinking),
+            // 1つ目のモデルには長めに待つ（遅いだけのことが多い）。予備モデルは残り時間で
+            signal: AbortSignal.timeout(model === models[0] ? Math.min(remaining - 1000, 15_000) : remaining - 1000),
           }
         );
       } catch (e) {
@@ -256,6 +263,11 @@ async function askGemini(env, text) {
       }
       lastError = new Error(`Gemini API error ${res.status}: ${model} ${JSON.stringify(data).slice(0, 400)}`);
       console.warn(lastError.message);
+      if (res.status === 400 && withThinking && /thinking/i.test(JSON.stringify(data))) {
+        withThinking = false; // 思考設定に非対応 → 外して同じモデルで再試行
+        attempt--;
+        continue;
+      }
       if (res.status === 503 && attempt === 0 && model !== models[0]) {
         await new Promise((r) => setTimeout(r, 1000));
         continue;
